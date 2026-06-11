@@ -27,6 +27,18 @@ description: 中文阶段收尾技能。用于完成一个阶段、准备开新�
 | 冻结模块和接口 | **修改代码** |
 | 生成新对话启动口令 | **隐藏未验证内容** |
 | 标记未完成任务 | **跳过轻量审计** |
+| 写入 .resume/ session 文件 | **只写 RESUME.md 不写 .resume/** |
+
+## Session 文件写入
+
+收尾时必须写两个位置（顺序：先 .resume/，后 RESUME.md）：
+
+1. **`.resume/session-YYYYMMDD-HHmmss.md`**（主）— 当前窗口专属 checkpoint
+   - session ID 用收尾时刻的时间戳生成
+   - 文件格式：与 RESUME.md 相同的 5 字段结构，额外包含 `session_id`
+2. **根目录 `RESUME.md`**（副）— 向后兼容 fallback，只保留最新一条任务信息
+
+同一任务多次收尾用不同 session ID → 自然产生多个文件 → "继续"时按 task_name 去重，只展示最新。 |
 
 ## 优先读取
 
