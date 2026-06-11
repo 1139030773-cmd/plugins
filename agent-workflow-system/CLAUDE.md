@@ -92,11 +92,11 @@
 | 4 | **RESUME.md + .resume/** | 如果改动涉及任务状态变更，同步更新 `.resume/{session-id}.md` + 根目录 RESUME.md（last_updated / completed / next_step / phase） |
 | 5 | **版本号** | 如果是新功能/breaking change，同步更新 `plugin.json` + `marketplace.json` 版本，**版本号必须与步骤 2 的 CHANGELOG 一致** |
 | 6 | **commit + push** | 在 `plugins/` 仓库提交推送；新功能/breaking change 需打版本 tag |
-| 7 | **版本一致性验证** | 运行 `scripts/validate-version.ps1`（或 `.sh`），通过才算完成。不通过 → 回去补步骤 2 或 5，不准跳过 |
+| 7 | **版本一致性验证** | 检查 CHANGELOG、plugin.json、README 的版本号是否一致，不通过 → 回去补步骤 2 或 5 |
 
 > **步骤 2 和 5 互相交叉引用**：改 CHANGELOG 时想着 plugin.json，改 plugin.json 时想着 CHANGELOG。两个版本号互为锚点，忘了一个会自相矛盾。
 
-> **步骤 7 是硬卡点**：不读文件、不跑 `git tag` 确认 = 没改完。AI 不能凭"我记得改过了"跳过这步。
+> **步骤 7 是硬卡点**：不手动对比 CHANGELOG/plugin.json/README 版本号 = 没改完。AI 不能凭"我记得改过了"跳过这步。
 
 **违反信号**: 用户问"README 更新了吗"、"CHANGELOG 补了吗"、"推送了吗"、"Release 呢" = 你漏步骤了。
 
