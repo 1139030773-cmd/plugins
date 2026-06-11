@@ -24,9 +24,24 @@
 - **SessionStart Hook** — 每次启动自动 `git pull` 拉取最新版本（24h 节流）
 - **跨平台支持** — PowerShell + Bash 双实现
 
-### 🔁 全自动更新链路
+### 🔧 安装配置（2 分钟）
 
-**开发者改完关窗口 → 自动推送 GitHub → 用户开窗口自动拉取。零人工干预。**
+**第一步：启用 hook** — 在 `.claude/settings.local.json` 添加：
+
+```json
+{
+  "hooks": {
+    "SessionStart": [{"hooks": [{"type": "command", "command": "powershell.exe -File .claude/hooks/session-start.ps1", "timeout": 10}]}],
+    "SessionEnd": [{"hooks": [{"type": "command", "command": "powershell.exe -File .claude/hooks/session-end.ps1", "timeout": 15}]}]
+  }
+}
+```
+
+Hook 脚本在 `hooks/` 目录（复制到 `.claude/hooks/`），提供 `.ps1` 和 `.sh` 双版本。
+
+**第二步：健康检查** — `scripts/health-check.ps1 check` 扫描系统完整性。
+
+### 🔁 全自动更新链路
 
 ```
 你改系统 → 关窗口 → hook 自动 commit + push

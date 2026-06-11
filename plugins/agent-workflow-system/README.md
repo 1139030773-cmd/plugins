@@ -26,6 +26,33 @@ A Chinese-English bilingual AI workflow system for **Claude Code** and **Codex C
 - **SessionStart Hook** — Auto `git pull` on session start (24h throttle)
 - **Cross-platform** — PowerShell + Bash
 
+### 🔧 Setup (2 minutes)
+
+**Step 1: Enable hooks** — Add this to your `.claude/settings.local.json`:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [{
+      "matcher": "",
+      "hooks": [
+        {"type": "command", "command": "powershell.exe -File .claude/hooks/session-start.ps1", "timeout": 10}
+      ]
+    }],
+    "SessionEnd": [{
+      "matcher": "",
+      "hooks": [
+        {"type": "command", "command": "powershell.exe -File .claude/hooks/session-end.ps1", "timeout": 15}
+      ]
+    }]
+  }
+}
+```
+
+Hook scripts are in `hooks/` (copy to `.claude/hooks/`). Both `.ps1` and `.sh` versions available.
+
+**Step 2: Run health check** — `scripts/health-check.ps1 check` for system integrity scan.
+
 ### 🔁 Auto-Update Pipeline
 
 ```
