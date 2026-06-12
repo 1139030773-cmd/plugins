@@ -1,4 +1,4 @@
-# System Health Check Script
+﻿# System Health Check Script
 # Modes: check (detect issues) / clean (archive old data)
 # Runs silently on session start, reports only when issues found.
 
@@ -59,7 +59,7 @@ if (-not (Test-Path "$root\RESUME.md")) {
     Score-Subtract 15 "RESUME.md file missing"
     $details["resume"] = "missing"
 } else {
-    $resumeContent = Get-Content "$root\RESUME.md" -Raw
+    $resumeContent = Get-Content "$root\RESUME.md" -Raw -Encoding UTF8
     if ($resumeContent.Length -lt 10) {
         Score-Subtract 10 "RESUME.md empty or corrupted"
         $details["resume"] = "corrupted"
@@ -77,7 +77,7 @@ if (-not (Test-Path "$root\.resume")) {
 
     $taskSessionCounts = @{}
     foreach ($sf in $sessionFiles) {
-        $sfContent = Get-Content $sf.FullName -Raw
+        $sfContent = Get-Content $sf.FullName -Raw -Encoding UTF8
         $missingFields = @()
         foreach ($field in $REQUIRED_SESSION_FIELDS) {
             if ($sfContent -notmatch "- \*\*$([regex]::Escape($field))\*\*:") {
@@ -94,7 +94,7 @@ if (-not (Test-Path "$root\.resume")) {
                 Score-Subtract 3 "$($sf.Name): invalid status '$statusVal'"
             }
             if ($statusVal -eq "active") {
-                if ($sfContent -match '- \*\*task_name\*\*:\s*(.+)$') {
+                if ($sfContent -match '- \*\*task_name\*\*:\s*([^\r\n]+)') {
                     $tn = $matches[1].Trim()
                     if ($taskSessionCounts.ContainsKey($tn)) { $taskSessionCounts[$tn]++ } else { $taskSessionCounts[$tn] = 1 }
                 }
@@ -125,7 +125,7 @@ if (-not (Test-Path "$root\TASK_QUEUE.md")) {
     Score-Subtract 5 "TASK_QUEUE.md file missing"
     $details["task_queue"] = "missing"
 } else {
-    $tqContent = Get-Content "$root\TASK_QUEUE.md" -Raw
+    $tqContent = Get-Content "$root\TASK_QUEUE.md" -Raw -Encoding UTF8
     $tqLines = $tqContent -split "`n"
 
     $taskRows = @()
@@ -185,13 +185,13 @@ if (Test-Path "$root\.resume") {
 }
 
 foreach ($src in $stackSources) {
-    $srcContent = Get-Content $src -Raw
+    $srcContent = Get-Content $src -Raw -Encoding UTF8
     $inStack = $false
     $lines = $srcContent -split "`n"
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $line = $lines[$i]
-        if ($line -match 'task_stack:') { $inStack = $true; continue }
-        if ($inStack -and $line -match '^\s{4}-\s*name:\s*(.+)$') {
+        if ($line -match 'task_stack') { $inStack = $true; continue }
+        if ($inStack -and $line -match '^\s*-\s*name:\s*(.+)$') {
             $taskName = $matches[1].Trim()
             $allTaskNames[$taskName] = $true
         }
@@ -202,7 +202,7 @@ foreach ($src in $stackSources) {
             }
         }
         if ($inStack -and $line -match 'context_snapshot:') { $inStack = $false }
-        if ($inStack -and $line -match '^\s{2}- \*\*') { $inStack = $false }
+        if ($inStack -and $line -match '^\s*-\s*\*\*') { $inStack = $false }
     }
 }
 
@@ -213,7 +213,7 @@ foreach ($p in $allParents) {
     }
 }
 
-$csContent = Get-Content "$root\RESUME.md" -Raw
+$csContent = Get-Content "$root\RESUME.md" -Raw -Encoding UTF8
 $csBlocks = @("decisions", "eliminated", "user_style", "landmarks", "footguns")
 $missingCS = @()
 foreach ($blockName in $csBlocks) {
@@ -235,7 +235,7 @@ if (-not (Test-Path "$root\DECISIONS.md")) {
     Score-Subtract 3 "DECISIONS.md file missing"
     $details["decisions"] = "missing"
 } else {
-    $dContent = Get-Content "$root\DECISIONS.md" -Raw
+    $dContent = Get-Content "$root\DECISIONS.md" -Raw -Encoding UTF8
     $dCount = ([regex]::Matches($dContent, '^## D\d+', 'Multiline')).Count
     $details["decisions"] = "$dCount decisions"
 
@@ -284,10 +284,95 @@ if (Test-Path $skillsDir) {
 }
 
 # ============================================================
-# Check 6: Bloat detection (completed / decisions)
+# Check 6: Orphan task detection (cross-file consistency)
 # ============================================================
 
-$resumeContent = Get-Content "$root\RESUME.md" -Raw
+$orphanTasks = @()
+
+# Collect all task names from session files + RESUME.md task_stack
+$trackedTaskNames = @{}
+foreach ($src in $stackSources) {
+    $srcContent = Get-Content $src -Raw -Encoding UTF8
+    $inStack = $false
+    $lines = $srcContent -split "`n"
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $line = $lines[$i]
+        if ($line -match 'task_stack') { $inStack = $true; continue }
+        if ($inStack -and $line -match '^\s*-\s*name:\s*(.+)$') {
+            $taskName = $matches[1].Trim()
+            $trackedTaskNames[$taskName] = $true
+        }
+        if ($inStack -and $line -match 'context_snapshot:') { $inStack = $false }
+        if ($inStack -and $line -match '^\s*-\s*\*\*') { $inStack = $false }
+    }
+}
+
+# Scan STATE_SNAPSHOT.md for active_task
+if (Test-Path "$root\STATE_SNAPSHOT.md") {
+    $ssContent = Get-Content "$root\STATE_SNAPSHOT.md" -Raw -Encoding UTF8
+    if ($ssContent -match '- \*\*active_task\*\*:\s*([^\n\r]+)') {
+        $ssTask = $matches[1].Trim()
+        $ssModified = (Get-Item "$root\STATE_SNAPSHOT.md").LastWriteTime.ToString('yyyy-MM-dd HH:mm')
+        if (-not $trackedTaskNames.ContainsKey($ssTask)) {
+            $orphanTasks += "STATE_SNAPSHOT: '$ssTask' (active_task, last modified $ssModified) -- not in any session task_stack"
+        }
+    }
+}
+
+# Scan PROJECT.md for project goal (if it reads like a task)
+if (Test-Path "$root\PROJECT.md") {
+    $prjContent = Get-Content "$root\PROJECT.md" -Raw -Encoding UTF8
+    if ($prjContent -match '## (é¡¹ç›®ç›®æ ‡|Project Goal)\s*\n\s*([^\n\r]+)') {
+        $prjGoal = $matches[2].Trim(); $prjModified = (Get-Item "$root\PROJECT.md").LastWriteTime.ToString('yyyy-MM-dd HH:mm')
+        $prjShort = if ($prjGoal.Length -gt 60) { $prjGoal.Substring(0, 60) + "..." } else { $prjGoal }
+        $found = $false
+        foreach ($tn in $trackedTaskNames.Keys) {
+            if ($tn -match 'countdown|demo|video|promo|marketplace' -or $prjGoal -match [regex]::Escape($tn.Substring(0, [Math]::Min(4, $tn.Length)))) {
+                $found = $true; break
+            }
+        }
+        if (-not $found) {
+            $orphanTasks += "PROJECT: '$prjShort' (project goal, last modified $prjModified) -- not in any session task_stack"
+        }
+    }
+}
+
+# Scan for other task-indicating files
+# Build full content blob from all session files for keyword matching
+$allSessionContent = ''
+foreach ($src in $stackSources) {
+    $allSessionContent += Get-Content $src -Raw -Encoding UTF8
+}
+
+$orphanIndicators = @(
+    @{File="video-script.md"; Keyword="video|promo|script"; Desc="Video promo script"},
+    @{File="RELEASE_CHECKLIST.md"; Keyword="release|marketplace|publish"; Desc="Release checklist"},
+    @{File="MARKETPLACE.md"; Keyword="marketplace|publish"; Desc="Marketplace guide"}
+)
+foreach ($indicator in $orphanIndicators) {
+    $fPath = "$root\$($indicator.File)"
+    if (Test-Path $fPath) {
+        $fModified = (Get-Item $fPath).LastWriteTime.ToString('yyyy-MM-dd HH:mm')
+        if ($allSessionContent -notmatch $indicator.Keyword) {
+            $orphanTasks += "$($indicator.File) ($($indicator.Desc), last modified $fModified) -- related task not in any session file"
+        }
+    }
+}
+
+if ($orphanTasks.Count -gt 0) {
+    $details["orphan_tasks"] = "$($orphanTasks.Count) orphan(s)"
+    foreach ($ot in $orphanTasks) {
+        Score-Subtract 4 "Orphan task: $ot"
+    }
+} else {
+    $details["orphan_tasks"] = "none"
+}
+
+# ============================================================
+# Check 7: Bloat detection (completed / decisions)
+# ============================================================
+
+$resumeContent = Get-Content "$root\RESUME.md" -Raw -Encoding UTF8
 $completedItems = Parse-YamlList $resumeContent "completed:"
 $completedCount = $completedItems.Count
 $details["completed"] = "$completedCount completed items"
@@ -335,10 +420,10 @@ if ($Mode -eq "check") {
         $resumeContent = $resumeContent -replace $insertAfter, "$insertAfter`n$newLine"
     }
 
-    # active_tasks from TASK_QUEUE (status contains "进行中")
+    # active_tasks from TASK_QUEUE (status contains "è¿›è¡Œä¸­")
     $activeTasks = @()
     if (Test-Path "$root\TASK_QUEUE.md") {
-        $tqContent = Get-Content "$root\TASK_QUEUE.md" -Raw
+        $tqContent = Get-Content "$root\TASK_QUEUE.md" -Raw -Encoding UTF8
         $tqLines = $tqContent -split "`n"
         foreach ($line in $tqLines) {
             if ($line -match '^\| (\d+) \| (.+)$') {
@@ -347,7 +432,7 @@ if ($Mode -eq "check") {
                 if ($cells.Count -ge 6) {
                     $taskName = $cells[0].Trim()
                     $status = $cells[2].Trim()
-                    if ($status -match '进行中') {
+                    if ($status -match 'è¿›è¡Œä¸­') {
                         $activeTasks += $taskName
                     }
                 }
@@ -377,8 +462,8 @@ if ($Mode -eq "clean") {
         $allSessions = @(Get-ChildItem "$root\.resume" -Filter "session-*.md" | Sort-Object LastWriteTime -Descending)
         $taskGroups = @{}
         foreach ($sf in $allSessions) {
-            $sfc = Get-Content $sf.FullName -Raw
-            if ($sfc -match '- \*\*task_name\*\*:\s*(.+)$') {
+            $sfc = Get-Content $sf.FullName -Raw -Encoding UTF8
+            if ($sfc -match '- \*\*task_name\*\*:\s*([^\r\n]+)') {
                 $tn = $matches[1].Trim()
                 if (-not $taskGroups.ContainsKey($tn)) { $taskGroups[$tn] = @() }
                 $taskGroups[$tn] += $sf
@@ -415,7 +500,7 @@ $($excess | ForEach-Object { "- $_" } | Out-String)
 
     # Clean 3: Mark old decisions as potentially stale
     if ($dCount -gt $DECISIONS_MAX) {
-        $dContent = Get-Content "$root\DECISIONS.md" -Raw
+        $dContent = Get-Content "$root\DECISIONS.md" -Raw -Encoding UTF8
         $dLines = $dContent -split "`n"
         $decisionDates = @{}
         $decisionLines = @{}
