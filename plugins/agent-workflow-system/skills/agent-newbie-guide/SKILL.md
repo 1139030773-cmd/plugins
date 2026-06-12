@@ -131,6 +131,33 @@ description: 中文新手引导技能。用于用户有模糊目标、不会拆�
 
 内部建立：`PROJECT.md`、`TASK_QUEUE.md`、`DECISIONS.md`、`STATE_SNAPSHOT.md`。只设一个进行中任务。**不向用户报告这些文件操作。**
 
+### PROJECT.md 模板（项目总览，一句话看懂）
+
+```
+# {项目名}
+
+## 一句话概述
+{做什么 + 给谁用}
+
+## 当前状态
+- 阶段：{phase}
+- 下一步：{next_step}
+
+## 做了什么
+- （从 RESUME.md completed 提取）
+
+## 为什么这样做
+- （从 DECISIONS.md 提取关键决策）
+
+## 还有什么
+- （从 TASK_QUEUE 提取等待中任务）
+
+---
+最后更新：{date}
+```
+
+此后 project-master 每次阶段完成时更新 PROJECT.md。
+
 ## 第八步：证据链
 
 每次输出后追加动作记录（动作序号 + 技能名 + 对齐条款 + 验证结果 + 回滚点）。
